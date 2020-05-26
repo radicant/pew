@@ -169,6 +169,7 @@
   <ItemGroup>
     <ClInclude Include="BasicTypes.h" />
     <ClInclude Include="Color.h" />
+    <ClInclude Include="Matrix.h" />
     <ClInclude Include="Ray.h" />
     <ClInclude Include="Sphere.h" />
     <ClInclude Include="Timer.h" />

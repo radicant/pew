@@ -4,6 +4,7 @@
 #include "SDL.h"
 
 #include "Color.h"
+#include "Matrix.h"
 #include "Ray.h"
 #include "Sphere.h"
 #include "Timer.h"
@@ -94,7 +95,7 @@ const Sphere spheres[] = {
 };
 const u32 numSpheres = ARRAY_LENGTH(spheres);
 
-const point_light lights[] = { point_light(Vec3(50, 100, -5), Color::WHITE) };
+const point_light lights[] = { point_light(Vec3(5, 5, 5), Color::WHITE) };
 const u32 numLights = ARRAY_LENGTH(lights);
 
 bool trace(const Ray &r, float *t, const Sphere **s) {
@@ -128,7 +129,7 @@ DWORD WINAPI cast_ray(LPVOID lpParam) {
     thread_data *data = (thread_data *)lpParam;
     u32 numRays = 0;
 
-    const float FOV = M_PI / 2.0;
+    const float FOV = M_PI / 4.0;
     const float tanFov2 = tan(FOV / 2.0);
     const float aspectRatio = (float)WIDTH / HEIGHT;
     const float aspectTimesTanFov = aspectRatio * tanFov2;
@@ -143,6 +144,10 @@ DWORD WINAPI cast_ray(LPVOID lpParam) {
     const u32 numOffsets = ARRAY_LENGTH(offsetsX);
     const float invNumOffsets = 1.0 / numOffsets;
 
+    const Matrix camToWorld = Matrix::lookAt(Vec3(0, 0, 3), Vec3(0, 0, 0));
+
+    const Vec3 rayOriginWorld = camToWorld.multPoint(Vec3::ZERO);
+
     for (u32 y = data->startY; y < data->startY + data->numY; ++y) {
         for (u32 x = 0; x < WIDTH; ++x) {
             Color c = Color::BLACK;
@@ -151,9 +156,13 @@ DWORD WINAPI cast_ray(LPVOID lpParam) {
                 const float dirX = (2.0 * (x + offsetsX[o]) / WIDTH - 1.0) * aspectTimesTanFov;
                 const float dirY = (1.0 - 2.0 * (y + offsetsY[o]) / HEIGHT) * tanFov2;
 
-                Vec3 dir(dirX, dirY, -1);
-                dir.normalize();
-                Ray r(Vec3::ZERO, dir);
+                Vec3 point(dirX, dirY, -1);
+                
+                Vec3 rayPointWorld = camToWorld.multPoint(point);
+                Vec3 rayDirWorld = rayPointWorld - rayOriginWorld;
+                rayDirWorld.normalize();
+
+                Ray r(rayOriginWorld, rayDirWorld);
 
                 ++numRays;
 
