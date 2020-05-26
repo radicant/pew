@@ -1,20 +1,17 @@
 #include <assert.h>
-#include <float.h>
-#include <math.h>
-#include <stdint.h>
 #include <stdio.h>
 
-// for QPC
-#include <windows.h>
-
 #include "SDL.h"
+
+#include "Color.h"
+#include "Ray.h"
+#include "Sphere.h"
+#include "Timer.h"
+#include "Vec3.h"
 
 #define AA 1
 
 #define ARRAY_LENGTH(array) (sizeof((array)) / sizeof((array[0])))
-
-typedef uint8_t u8;
-typedef uint32_t u32;
 
 const u32 WIDTH = 1280;
 const u32 HEIGHT = 720;
@@ -69,169 +66,15 @@ private:
     HANDLE      threadHandles[NUM_THREADS];
 };
 
-struct timer {
-    timer() {
-        QueryPerformanceFrequency(&frequency);
-    }
 
-    void start() {
-        QueryPerformanceCounter(&begin);
-    }
 
-    void stop() {
-        LARGE_INTEGER end;
-        QueryPerformanceCounter(&end);
-        elapsed.QuadPart = (1000000 * (end.QuadPart - begin.QuadPart)) / frequency.QuadPart;
-    }
-
-    float elapsedInMs() const {
-        return 1e-3 * elapsed.QuadPart;
-    }
-
-    float elapsedInUs() const {
-        return elapsed.QuadPart;
-    }
-
-private:
-    LARGE_INTEGER begin, elapsed, frequency;
-};
-
-float quadratic(const float a, const float b, const float c) {
-    float x = FLT_MAX;
-    float disc = b * b - 4 * a * c;
-    if (disc == 0) {
-        x = -0.5 * b / a;
-    }
-    else if (disc > 0) {
-        float q = (b > 0) ? -0.5 * (b - sqrt(disc)) : -0.5 * (b + sqrt(disc));
-        float x0 = q / a;
-        float x1 = c / q;
-        if (x0 < x1 && x0 >= 0) {
-            x = x0;
-        }
-        else if (x1 >= 0) {
-            x = x1;
-        }
-    }
-    return x;
-}
-
-struct v3 {
-    v3(float x, float y, float z) : x(x), y(y), z(z) { }
-
-    void normalize() {
-        float invLen = 1.0 / length();
-        if (invLen > 0) {
-            x *= invLen;
-            y *= invLen;
-            z *= invLen;
-        }
-    }
-
-    float length() const {
-        return sqrt(x * x + y * y + z * z);
-    }
-
-    float dot(const v3 &v) const {
-        return x * v.x + y * v.y + z * v.z;
-    }
-
-    v3 operator+(const v3 &b) const {
-        return v3(x + b.x, y + b.y, z + b.z);
-    }
-
-    v3 operator-(const v3 &b) const {
-        return v3(x - b.x, y - b.y, z - b.z);
-    }
-
-    float x;
-    float y;
-    float z;
-};
-
-v3 operator*(const float s, const v3 & rhs) {
-    return v3(rhs.x * s, rhs.y * s, rhs.z * s);
-}
-
-struct ray {
-    ray(const v3 &o, const v3 &d) : o(o), d(d) { }
-
-    v3 pointAt(const float t) {
-        return o + t * d;
-    }
-
-    v3 o;
-    v3 d;
-};
-
-struct color {
-    color(const float a, const float r, const float g, const float b) : a(a), r(r), g(g), b(b) {}
-
-    color &operator+=(const color &rhs) {
-        a += rhs.a;
-        r += rhs.r;
-        g += rhs.g;
-        b += rhs.b;
-        return *this;
-    }
-
-    color &operator*=(const float s) {
-        a *= s;
-        r *= s;
-        g *= s;
-        b *= s;
-        return *this;
-    }
-
-    color operator*(const color &rhs) const {
-        return color(a * rhs.a, r * rhs.r, g * rhs.g, b * rhs.b);
-    }
-
-    color operator*(const float s) const {
-        return color(a * s, r * s, g * s, b * s);
-    }
-
-    u32 toU32() const {
-        return (((u32)(255 * a) << 24) | ((u32)(255 * r) << 16) | ((u32)(255 * g) << 8) | (u32)(255 * b));
-    }
-
-    float a;
-    float r;
-    float g;
-    float b;
-};
 
 struct point_light {
-    point_light(const v3 &p, const color &c) : p(p), c(c) {}
+    point_light(const Vec3 &p, const Color &c) : p(p), c(c) {}
 
-    v3 p;
-    color c;
+    Vec3 p;
+    Color c;
 };
-
-const color BLACK = color(1.0, 0.0, 0.0, 0.0);
-const color WHITE = color(1.0, 1.0, 1.0, 1.0);
-const color RED = color(1.0, 1.0, 0.0, 0.0);
-const color GREEN = color(1.0, 0.0, 1.0, 0.0);
-const color BLUE = color(1.0, 0.0, 0.0, 1.0);
-
-struct sphere {
-    sphere(const v3 &o, const float r, const color &c) : o(o), r(r), c(c) {}
-
-    float intersect(const ray &r) const {
-        v3 l = r.o - o;
-        float a = r.d.dot(r.d);
-        float b = 2 * r.d.dot(l);
-        float c = l.dot(l) - this->r * this->r;
-        return quadratic(a, b, c);
-    }
-
-    const v3 o;
-    const float r;
-    const color c;
-};
-
-
-const v3 ZERO = v3(0, 0, 0);
 
 bool messageLoop() {
     SDL_Event e;
@@ -243,15 +86,19 @@ bool messageLoop() {
     return true;
 }
 
-const sphere spheres[] = { sphere(v3(-1.0, 0, -1.5), .60, RED), sphere(v3(0, 0, -1), .75, GREEN), sphere(v3(1.0, 0, -1.5), .60, BLUE) };
+const Sphere spheres[] = { 
+    Sphere(Vec3(-1.0, 0, -1.5), .60, Color::RED), 
+    Sphere(Vec3(0, 0, -1), .75, Color::GREEN), 
+    Sphere(Vec3(1.0, 0, -1.5), .60, Color::BLUE) 
+};
 const u32 numSpheres = ARRAY_LENGTH(spheres);
 
-bool trace(const ray & r, float *t, const sphere * *s) {
+bool trace(const Ray & r, float *t, const Sphere **s) {
     float minT = FLT_MAX;
-    const sphere *minSphere = NULL;
+    const Sphere *minSphere = NULL;
 
     for (u32 s = 0; s < numSpheres; ++s) {
-        const sphere &sphere = spheres[s];
+        const Sphere &sphere = spheres[s];
         float newT = sphere.intersect(r);
         if (newT < minT) {
             minT = newT;
@@ -284,8 +131,7 @@ DWORD WINAPI cast_ray(LPVOID lpParam) {
     const float aspectRatio = (float)WIDTH / HEIGHT;
     const float aspectTimesTanFov = aspectRatio * tanFov2;
 
-
-    const point_light lights[] = { point_light(v3(3, 5, 1), WHITE) };
+    const point_light lights[] = { point_light(Vec3(3, 5, 1), Color::WHITE) };
     const u32 numLights = ARRAY_LENGTH(lights);
 
 #if AA
@@ -300,33 +146,33 @@ DWORD WINAPI cast_ray(LPVOID lpParam) {
 
     for (u32 y = data->startY; y < data->startY + data->numY; ++y) {
         for (u32 x = 0; x < WIDTH; ++x) {
-            color c = BLACK;
+            Color c = Color::BLACK;
 
             for (u32 o = 0; o < numOffsets; ++o) {
                 const float dirX = (2.0 * (x + offsetsX[o]) / WIDTH - 1.0) * aspectTimesTanFov;
                 const float dirY = (1.0 - 2.0 * (y + offsetsY[o]) / HEIGHT) * tanFov2;
 
-                v3 dir = v3(dirX, dirY, -1);
+                Vec3 dir(dirX, dirY, -1);
                 dir.normalize();
-                ray r = ray(ZERO, dir);
+                Ray r(Vec3::ZERO, dir);
 
                 ++numRays;
 
                 float minT = 0;
-                const sphere *s = NULL;
+                const Sphere *s = NULL;
                 if (trace(r, &minT, &s) == true) {
-                    v3 hitPoint = r.pointAt(minT);
+                    Vec3 hitPoint = r.pointAt(minT);
                     for (u32 l = 0; l < numLights; ++l) {
                         const point_light &light = lights[l];
-                        v3 toLight = light.p - hitPoint;
+                        Vec3 toLight = light.p - hitPoint;
                         const float distanceToLightSquared = toLight.dot(toLight);
                         toLight.normalize();
-                        v3 normal = hitPoint - s->o;
+                        Vec3 normal = hitPoint - s->o;
                         normal.normalize();
-                        ray lightRay = ray(hitPoint + 1e-6 * normal, toLight);
+                        Ray lightRay(hitPoint + 1e-6 * normal, toLight);
 
                         float minLightT = 0;
-                        const sphere *lightSphere = NULL; // don't care
+                        const Sphere *lightSphere = NULL; // don't care
 
                         ++numRays;
                         bool shadowed = trace(lightRay, &minLightT, &lightSphere) == true && minLightT * minLightT < distanceToLightSquared;
@@ -385,7 +231,7 @@ int main(int argc, char **argv) {
 
     render_pool pool(surface, cast_ray);
 
-    timer t;
+    Timer t;
     t.start();
     const u32 numRays = pool.traceAllRays();
     t.stop();
