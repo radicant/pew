@@ -67,14 +67,14 @@ private:
 };
 
 
-
-
 struct point_light {
     point_light(const Vec3 &p, const Color &c) : p(p), c(c) {}
 
     Vec3 p;
     Color c;
 };
+
+const Color ambient = Color::ALMOST_BLACK;
 
 bool messageLoop() {
     SDL_Event e;
@@ -87,34 +87,36 @@ bool messageLoop() {
 }
 
 const Sphere spheres[] = { 
-    Sphere(Vec3(-1.0, 0, -1.5), .60, Color::RED), 
+    Sphere(Vec3(0, -1000001.0, 0), 1000000.0, Color::DARK_SLATE_GRAY),
+    Sphere(Vec3(-3.0, 0, -2.5), .60, Color::RED), 
     Sphere(Vec3(0, 0, -1), .75, Color::GREEN), 
-    Sphere(Vec3(1.0, 0, -1.5), .60, Color::BLUE) 
+    Sphere(Vec3(3.0, 0, -2.5), .60, Color::BLUE)
 };
 const u32 numSpheres = ARRAY_LENGTH(spheres);
 
-bool trace(const Ray & r, float *t, const Sphere **s) {
+const point_light lights[] = { point_light(Vec3(50, 100, -5), Color::WHITE) };
+const u32 numLights = ARRAY_LENGTH(lights);
+
+bool trace(const Ray &r, float *t, const Sphere **s) {
     float minT = FLT_MAX;
     const Sphere *minSphere = NULL;
 
     for (u32 s = 0; s < numSpheres; ++s) {
         const Sphere &sphere = spheres[s];
         float newT = sphere.intersect(r);
-        if (newT < minT) {
+        if (newT > 0 && newT < minT) {
             minT = newT;
             minSphere = &sphere;
         }
     }
 
-    if (t != NULL) {
-        *t = minT;
-        *s = minSphere;
-    }
+    *t = minT;
+    *s = minSphere;
 
     return minT != FLT_MAX;
 }
 
-void setPixel(const SDL_Surface * surface, u32 x, u32 y, u32 pixel) {
+void setPixel(const SDL_Surface *surface, u32 x, u32 y, u32 pixel) {
     u32 *target_pixel = (u32 *)((u8 *)surface->pixels + y * surface->pitch + x * sizeof(u32));
     *target_pixel = pixel;
 }
@@ -130,9 +132,6 @@ DWORD WINAPI cast_ray(LPVOID lpParam) {
     const float tanFov2 = tan(FOV / 2.0);
     const float aspectRatio = (float)WIDTH / HEIGHT;
     const float aspectTimesTanFov = aspectRatio * tanFov2;
-
-    const point_light lights[] = { point_light(Vec3(3, 5, 1), Color::WHITE) };
-    const u32 numLights = ARRAY_LENGTH(lights);
 
 #if AA
     const float offsetsX[] = { 0.2, 0.4, 0.6, 0.8 };
@@ -174,15 +173,20 @@ DWORD WINAPI cast_ray(LPVOID lpParam) {
                         float minLightT = 0;
                         const Sphere *lightSphere = NULL; // don't care
 
+                        Color shade = ambient;
+
                         ++numRays;
                         bool shadowed = trace(lightRay, &minLightT, &lightSphere) == true && minLightT * minLightT < distanceToLightSquared;
                         if (shadowed == false) {
                             const float ndotl = normal.dot(toLight);
                             if (ndotl > 0) {
                                 assert(ndotl <= 1.0);
-                                c += s->c * light.c * ndotl;
+                                shade += s->c * light.c * ndotl;
+                                shade.saturate();
                             }
                         }
+
+                        c += shade;
                     }
                 }
             }

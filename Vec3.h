@@ -17,7 +17,7 @@ struct Vec3 {
     }
 
     float length() const {
-        return sqrt(x * x + y * y + z * z);
+        return sqrtf(x * x + y * y + z * z);
     }
 
     float dot(const Vec3 &v) const {
